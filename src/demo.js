@@ -19,7 +19,8 @@ function cleanData(transData) {
 	
 	transData.transactions.forEach(function(obj) {
 	      var date = new Date(obj['clear-date']), // parse transaction date
-	          dateLength = 0;
+	          dateLength = 0,
+	          amount = obj.amount/10000; //convert centocents to dollars
 	      
 	      //Calculate the length of the key depending on what is aggregated by
 	      if (document.getElementById('aggregateBy_day').checked) {
@@ -34,10 +35,10 @@ function cleanData(transData) {
 	      // create element for current month if needed
 	      aggData[aggKey] = aggData[aggKey] || {'spent':0, "income":0}; 
 	      
-	      if (obj.amount > 0) { //income
-	    	  aggData[aggKey].income += obj.amount;
+	      if (amount > 0) { //income
+	    	  aggData[aggKey].income += amount;
 	      } else { //spent
-	    	  aggData[aggKey].spent += obj.amount;
+	    	  aggData[aggKey].spent += amount;
 	      }
 	  });
 	
@@ -59,13 +60,28 @@ function drawTable(transData) {
   data.addColumn('string', "Date");
   data.addColumn('string', "Spent");
   data.addColumn('string', "Income");
+  data.addColumn('string', "Balance");
+  
+  var currencyFormatter = new Intl.NumberFormat('en-US', {
+	  style: 'currency',
+	  currency: 'USD',
+	  minimumFractionDigits: 2,
+	});
+  
+  var fnCreateRowObject = function(num) {
+	  var obj = {};
+	  obj.v = num + "";
+	  obj.f = currencyFormatter.format(num);
+	  return obj;
+  }
   
   Object.keys(transData).forEach(function(row) {
       var o = transData[row],
           r = [];
       r[0] = row + '';
-      r[1] = o.spent + '';
-      r[2] = o.income + '';
+      r[1] = fnCreateRowObject(o.spent);
+      r[2] = fnCreateRowObject(o.income);
+      r[3] = fnCreateRowObject(o.spent + o.income);
       
       data.addRow(r);
   });
