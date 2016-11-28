@@ -19,15 +19,25 @@ function cleanData(transData) {
 	
 	transData.transactions.forEach(function(obj) {
 	      var date = new Date(obj['clear-date']), // parse transaction date
-	      	  monthKey = date.toISOString().slice(0, 7); // create month key with format YYYY-MM
+	          dateLength = 0;
+	      
+	      //Calculate the length of the key depending on what is aggregated by
+	      if (document.getElementById('aggregateBy_day').checked) {
+	    	  dateLength = 10; // create month key with format YYYY-MM-DD
+	      } else if (document.getElementById('aggregateBy_month').checked) {
+	    	  dateLength = 7; // create month key with format YYYY-MM
+	      } else if (document.getElementById('aggregateBy_year').checked) {
+	    	  dateLength = 4 // create month key with format YYYY
+	      }
+	      var aggKey = date.toISOString().slice(0, dateLength); 
 	      
 	      // create element for current month if needed
-	      aggData[monthKey] = aggData[monthKey] || {'spent':0, "income":0}; 
+	      aggData[aggKey] = aggData[aggKey] || {'spent':0, "income":0}; 
 	      
 	      if (obj.amount > 0) { //income
-	    	  aggData[monthKey].income += obj.amount;
+	    	  aggData[aggKey].income += obj.amount;
 	      } else { //spent
-	    	  aggData[monthKey].spent += obj.amount;
+	    	  aggData[aggKey].spent += obj.amount;
 	      }
 	  });
 	
@@ -62,5 +72,5 @@ function drawTable(transData) {
 
   var table = new google.visualization.Table(document.getElementById('content'));
 
-  table.draw(data, {showRowNumber: true, width: '100%', height: '100%'});
+  table.draw(data, {showRowNumber: false, width: '100%', height: '100%'});
 }

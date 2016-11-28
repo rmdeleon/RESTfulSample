@@ -3,9 +3,14 @@
 	<script type="text/javascript" src="src/demo.js"></script>
     <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
 </head>
-<body>
-<input type="button" onclick="getTransactions();" value="Get Transactions">
-<div id="content"></div>
+<body onload="getTransactions();">
+
+  <span> Aggregate by: </span><br>
+  <input type="radio" name="aggregateBy" value="day" id="aggregateBy_day" onclick="getTransactions();"> Day<br>
+  <input type="radio" name="aggregateBy" value="month" id="aggregateBy_month" onclick="getTransactions();" checked> Month<br>
+  <input type="radio" name="aggregateBy" value="year" id="aggregateBy_year" onclick="getTransactions();"> Year<br><br>
+  
+  <div id="content"></div>
 
 </body>
 </html>
