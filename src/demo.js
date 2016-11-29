@@ -75,7 +75,10 @@ function renderGoogleTable(transData) {
                 style: "currency",
                 currency: "USD",
                 minimumFractionDigits: 2
-            });
+            }),
+            totalIncome = 0,
+            totalSpent = 0,
+            transCount = 0;
 
         // initialize columns
         data.addColumn("string", "Date");
@@ -88,22 +91,43 @@ function renderGoogleTable(transData) {
             obj.v = num + "";
             obj.f = currencyFormatter.format(num);
             return obj;
-        }
+        };
 
-        Object.keys(transData).forEach(function (row) {
-            var o = transData[row],
-                r = [];
-            r[0] = row + "";
-            r[1] = fnCreateRowObject(o.spent);
-            r[2] = fnCreateRowObject(o.income);
-            r[3] = fnCreateRowObject(o.spent + o.income);
+        var fnAddRow =  function (name, income, spent) {
+            var r = [];
 
+            // create row array
+            r[0] = name;
+            r[1] = fnCreateRowObject(spent);
+            r[2] = fnCreateRowObject(income);
+            r[3] = fnCreateRowObject(spent + income);
+
+            // add row
             data.addRow(r);
+        };
+        
+        // Add rows for each month/year/day
+        Object.keys(transData).forEach(function (row) {
+            var o = transData[row];
+
+            // add row
+            fnAddRow(row + "", o.income, o.spent);
+
+            // calculate totals for later
+            totalIncome += o.income;
+            totalSpent += o.spent;
+            transCount++;
         });
+
+        // Add Average row:
+        fnAddRow("Average", totalIncome/transCount, totalSpent/transCount);
+
+        // Add total row:
+        fnAddRow("Total", totalIncome, totalSpent);
+
 
         var table = new google.visualization.Table(document.getElementById("content"));
 
         table.draw(data, {showRowNumber: false, width: "100%", height: "100%"});
-
     });
 }
