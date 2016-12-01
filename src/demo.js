@@ -33,6 +33,38 @@ function isValidTransaction(transaction) {
 
 function cleanData(transData) {
     var aggData = {}; // Aggregated data {"2014": {spent: 2, income: 3}, "2015": {spent:5, income: 4}, ...}
+    var ccData = [];
+    var ccIgnore = {};
+
+
+    if (document.getElementById("ignoreCC").checked) {
+        transData.transactions.forEach(function (obj) {
+            var date = new Date(obj["clear-date"]), // parse transaction date
+                tranId = obj["transaction-id"],
+                amount = obj.amount;
+
+            if (amount > 0) { //income
+
+                // remember any positive transaction so we can check later
+                ccData.push({"date": date, "income": amount, "trans-id": tranId});
+            } else { //spent
+
+                //check against existing positive transactions list
+                ccData.forEach(function (o) {
+                        if (amount + o.income === 0 &&
+                            date - o.date < 86400000) { 
+                            //we found a matching transaction, add both transaction IDs so we can ignore them
+                            ccIgnore[date.toISOString()] = {"spent": amount, "income": 0};
+                            ccIgnore[o.date.toISOString()] = {"spent": 0, "income": o.income};
+
+                            //TODO: remove recently added transactions from ccData
+                        }
+                    }
+                );
+            }
+        });
+    }
+
 
     transData.transactions.forEach(function (obj) {
         if (isValidTransaction(obj)) {
@@ -41,6 +73,7 @@ function cleanData(transData) {
                 amount = obj.amount / 10000; //convert centocents to dollars
 
             //Calculate the length of the key depending on what is aggregated by
+
             if (document.getElementById("aggregateBy_day").checked) {
                 dateLength = 10; // create month key with format YYYY-MM-DD
             } else if (document.getElementById("aggregateBy_month").checked) {
@@ -55,17 +88,25 @@ function cleanData(transData) {
 
             if (amount > 0) { //income
                 aggData[aggKey].income += amount;
+
+                // cc transactions
+                ccData.push({"date": date, "income": amount});
             } else { //spent
                 aggData[aggKey].spent += amount;
+
+                //
             }
         }
     });
 
-    // render the table
-    renderGoogleTable(aggData);
+    // render transactions table
+    renderGoogleTable(aggData, "content");
+
+    // render cc table
+    renderGoogleTable(ccIgnore, "cc");
 }
 
-function renderGoogleTable(transData) {
+function renderGoogleTable(transData, divName) {
 
     google.charts.load("current", {"packages":["table"]});
     google.charts.setOnLoadCallback(function () {
@@ -105,7 +146,7 @@ function renderGoogleTable(transData) {
             // add row
             data.addRow(r);
         };
-        
+
         // Add rows for each month/year/day
         Object.keys(transData).forEach(function (row) {
             var o = transData[row];
@@ -126,7 +167,7 @@ function renderGoogleTable(transData) {
         fnAddRow("Total", totalIncome, totalSpent);
 
 
-        var table = new google.visualization.Table(document.getElementById("content"));
+        var table = new google.visualization.Table(document.getElementById(divName));
 
         table.draw(data, {showRowNumber: false, width: "100%", height: "100%"});
     });
