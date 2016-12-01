@@ -1,3 +1,7 @@
+/**
+ * Function that an XHR request to get transactions from the server
+ * when done it calls {#processTransactionData}
+ */
 function getTransactions() {
     var fnDisplayError = function (e) {
         document.getElementById("content").textContent = "An error has occurred: " + e;
@@ -9,7 +13,7 @@ function getTransactions() {
     xhr.setRequestHeader("Accept", "application/json");
     xhr.onloadend = function () {
         try {
-            cleanData(JSON.parse(this.response));
+            processTransactionData(JSON.parse(this.response));
         } catch (e) {
             fnDisplayError(e);
         }
@@ -21,53 +25,87 @@ function getTransactions() {
     xhr.send(JSON.stringify(args));
 }
 
-function isValidTransaction(transaction) {
+/**
+ * Function that checks if a transaction is valid
+ * @param transaction the transaction object
+ * @param ccIgnoreTransIds Array with lot of invalid transactions
+ * @returns {boolean} whether the transaction is valid
+ */
+function isValidTransaction(transaction, ccIgnoreTransIds) {
     if (document.getElementById("ignoreDonuts").checked) {
         var m = transaction.merchant;
         if (m === "Krispy Kreme Donuts" || m === "DUNKIN #336784") {
             return false;
         }
     }
+
+    if (document.getElementById("ignoreCC").checked) {
+        if (ccIgnoreTransIds.includes(transaction["transaction-id"])) {
+            return false;
+        }
+    }
+
     return true;
 }
 
-function cleanData(transData) {
-    var aggData = {}; // Aggregated data {"2014": {spent: 2, income: 3}, "2015": {spent:5, income: 4}, ...}
-    var ccData = [];
-    var ccIgnore = {};
+/**
+ * Processes the transaction data obtained from the server to generate the data that needs to be displayed to the user.
+ * when done it calls {#renderGoogleTable}
+ * @param transData the transaction data
+ */
+function processTransactionData(transData) {
+    var aggData = {}, // contains the aggregated transactions data {"2014": {spent: 2, income: 3}, "2015": {spent:5, income: 4}, ...}
+        ccTempData = [], // contains temporary transactions
+        ccIgnoreData = {}, // contains the aggregated transactions data for credit card transactions
+        ccIgnoreTransIds = []; // contains the final list of transaction IDs to ignore
 
-
+    // first examine all transactions to find those that are credit card transactions and may need to be ignored
+    // credit card payments will consist of two transactions with opposite amounts (e.g. 5000000 centocents and -5000000 centocents) within 24 hours of each other.
     if (document.getElementById("ignoreCC").checked) {
         transData.transactions.forEach(function (obj) {
             var date = new Date(obj["clear-date"]), // parse transaction date
-                tranId = obj["transaction-id"],
-                amount = obj.amount;
+                transId = obj["transaction-id"],
+                amount = obj.amount,
+                fnIgnoreTransaction = function (date, spent, income, transId) {
+                    ccIgnoreData[date.toISOString().slice(0, 19).replace("T", " - ")] = {"spent": spent / 10000, "income": income / 10000};
+                    ccIgnoreTransIds.push(transId);
+                };
 
             if (amount > 0) { //income
 
                 // remember any positive transaction so we can check later
-                ccData.push({"date": date, "income": amount, "trans-id": tranId});
+                ccTempData.push({"date": date, "income": amount, "trans-id": transId});
             } else { //spent
 
-                //check against existing positive transactions list
-                ccData.forEach(function (o) {
-                        if (amount + o.income === 0 &&
-                            date - o.date < 86400000) { 
-                            //we found a matching transaction, add both transaction IDs so we can ignore them
-                            ccIgnore[date.toISOString()] = {"spent": amount, "income": 0};
-                            ccIgnore[o.date.toISOString()] = {"spent": 0, "income": o.income};
+                //check against existing positive transactions list to find a matching one
+                for (var i = 0; i < ccTempData.length; i++) {
+                    var o = ccTempData[i];
+                    if (amount + o.income === 0 && // transactions have opposite amounts
+                        Math.abs(date - o.date) < 86400000) { // transactions are within a day of each other
 
-                            //TODO: remove recently added transactions from ccData
-                        }
+                        //matching transaction
+                        fnIgnoreTransaction(o.date, 0, o.income, o["transaction-id"]);
+
+                        //we found a matching transaction, add both transaction IDs so we can ignore them
+                        //current transaction
+                        fnIgnoreTransaction(date, amount, 0, transId);
+
+                        // Remove existing transaction as it has found its match
+                        ccTempData.splice(i, 1);
+
+                        // break as there is no need to keep searching
+                        break;
                     }
-                );
+                }
             }
         });
     }
 
 
+    // Now, loop through all transactions and start aggregating data at the day, month or year depending on the user selection.
+    // al data would be stored in "aggData" for later display
     transData.transactions.forEach(function (obj) {
-        if (isValidTransaction(obj)) {
+        if (isValidTransaction(obj, ccIgnoreTransIds)) {
             var date = new Date(obj["clear-date"]), // parse transaction date
                 dateLength = 0,
                 amount = obj.amount / 10000; //convert centocents to dollars
@@ -90,64 +128,69 @@ function cleanData(transData) {
                 aggData[aggKey].income += amount;
 
                 // cc transactions
-                ccData.push({"date": date, "income": amount});
+                ccTempData.push({"date": date, "income": amount});
             } else { //spent
                 aggData[aggKey].spent += amount;
 
-                //
             }
         }
     });
 
     // render transactions table
-    renderGoogleTable(aggData, "content");
+    renderGoogleTable(aggData, "content", true, true);
 
-    // render cc table
-    renderGoogleTable(ccIgnore, "cc");
+    // render credit card transactions table if needed
+    var ccDiv = document.getElementById("ccTransactionsSection");
+    if (document.getElementById("ignoreCC").checked) {
+        ccDiv.style = "display:block";
+        renderGoogleTable(ccIgnoreData, "cc", false, false);
+    } else {
+        ccDiv.style = "display:none";
+    }
 }
 
-function renderGoogleTable(transData, divName) {
+/**
+ * Renders a standard table using a google visualization
+ * @param transData conains the data to be displayed
+ * @param divName the name of the container div where the table should be rendered
+ * @param addTotals whether to add total rows
+ * @param addBalance whether to add balance column
+ */
+function renderGoogleTable(transData, divName, addTotals, addBalance) {
 
     google.charts.load("current", {"packages":["table"]});
     google.charts.setOnLoadCallback(function () {
 
         var data = new google.visualization.DataTable(),
-            currencyFormatter = new Intl.NumberFormat("en-US", {
-                style: "currency",
-                currency: "USD",
-                minimumFractionDigits: 2
-            }),
             totalIncome = 0,
             totalSpent = 0,
             transCount = 0;
 
         // initialize columns
         data.addColumn("string", "Date");
-        data.addColumn("string", "Spent");
-        data.addColumn("string", "Income");
-        data.addColumn("string", "Balance");
+        data.addColumn("number", "Spent");
+        data.addColumn("number", "Income");
+        if (addBalance) {
+            data.addColumn("number", "Balance");
+        }
 
-        var fnCreateRowObject = function (num) {
-            var obj = {};
-            obj.v = num + "";
-            obj.f = currencyFormatter.format(num);
-            return obj;
-        };
-
+        // Define local function to add a row so that we don't duplicate the code
         var fnAddRow =  function (name, income, spent) {
             var r = [];
 
             // create row array
             r[0] = name;
-            r[1] = fnCreateRowObject(spent);
-            r[2] = fnCreateRowObject(income);
-            r[3] = fnCreateRowObject(spent + income);
+            r[1] = spent;
+            r[2] = income;
+            if (addBalance) {
+                r[3] = spent + income;
+            }
 
             // add row
             data.addRow(r);
         };
 
-        // Add rows for each month/year/day
+        // Loop through aggregated transactions data to add a row for each month/year/day
         Object.keys(transData).forEach(function (row) {
             var o = transData[row];
 
@@ -160,15 +203,24 @@ function renderGoogleTable(transData, divName) {
             transCount++;
         });
 
-        // Add Average row:
-        fnAddRow("Average", totalIncome/transCount, totalSpent/transCount);
+        if (addTotals) {
+            // Add Average row
+            fnAddRow("Average", totalIncome/transCount, totalSpent/transCount);
 
-        // Add total row:
-        fnAddRow("Total", totalIncome, totalSpent);
-
+            // Add total row
+            fnAddRow("Total", totalIncome, totalSpent);
+        }
 
         var table = new google.visualization.Table(document.getElementById(divName));
 
-        table.draw(data, {showRowNumber: false, width: "100%", height: "100%"});
+        var formatter = new google.visualization.NumberFormat(
+            {prefix: "$", negativeColor: "red", negativeParens: true});
+        formatter.format(data, 1); // Apply formatter to second column
+        formatter.format(data, 2); // Apply formatter to third column
+        if (addBalance) {
+            formatter.format(data, 3); // Apply formatter to fourth column
+        }
+
+        table.draw(data, {showRowNumber: false, page: 'enable', pageSize: 100, allowHtml: true});
     });
 }
