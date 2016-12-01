@@ -61,6 +61,7 @@ function processTransactionData(transData) {
 
     // first examine all transactions to find those that are credit card transactions and may need to be ignored
     // credit card payments will consist of two transactions with opposite amounts (e.g. 5000000 centocents and -5000000 centocents) within 24 hours of each other.
+    // Note: to avoid multiple loops this code assumes that income (positive) transactions are found first. This may need to be revisited if that is not the case
     if (document.getElementById("ignoreCC").checked) {
         transData.transactions.forEach(function (obj) {
             var date = new Date(obj["clear-date"]), // parse transaction date
@@ -142,10 +143,10 @@ function processTransactionData(transData) {
     // render credit card transactions table if needed
     var ccDiv = document.getElementById("ccTransactionsSection");
     if (document.getElementById("ignoreCC").checked) {
-        ccDiv.style = "display:block";
+        ccDiv.style.display = "block";
         renderGoogleTable(ccIgnoreData, "cc", false, false);
     } else {
-        ccDiv.style = "display:none";
+        ccDiv.style.display = "none";
     }
 }
 
@@ -221,6 +222,6 @@ function renderGoogleTable(transData, divName, addTotals, addBalance) {
             formatter.format(data, 3); // Apply formatter to fourth column
         }
 
-        table.draw(data, {showRowNumber: false, page: 'enable', pageSize: 100, allowHtml: true});
+        table.draw(data, {showRowNumber: false, allowHtml: true});
     });
 }
